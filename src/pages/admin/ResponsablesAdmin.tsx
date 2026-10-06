@@ -13,7 +13,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 /* ───────────────────────── Tipos ───────────────────────── */
 
-type Rol = { clave: string; etiqueta: string };
+type Rol = { clave: string; etiqueta: string; multiple?: boolean };
 
 type Responsable = {
   colaborador_id: number;
@@ -21,13 +21,14 @@ type Responsable = {
   documento: string | null;
   asignado_desde: string; // "2026-10-03"
   asignado_por: string | null;
-} | null;
+};
 
 type Fila = {
   id: number;
   nombre: string;
   cecos: string | null;
-  responsables: Record<string, Responsable>;
+  // Roles múltiples (supervisor): lista. Formato anterior (un responsable por rol): objeto o null.
+  responsables: Record<string, Responsable | Responsable[] | null>;
 };
 
 type Datos = {
@@ -59,13 +60,22 @@ type Movimiento = {
 
 type Pagina<T> = { data: T[]; current_page: number; last_page: number; total: number };
 
-type Accion = { tipo: 'asignar' | 'liberar'; rol: Rol; ids: number[] };
+type Persona = { id: number; nombre: string };
+
+type Accion = { tipo: 'asignar' | 'liberar'; rol: Rol; ids: number[]; colaborador?: Persona };
 
 /* ───────────────────────── Helpers ───────────────────────── */
 
 const TEXTO_ERROR = 'text-sm text-red-600 dark:text-red-400';
 
 const hoyLocal = () => aFechaISOLocal(new Date());
+
+/** Responsables vigentes de un rol en una instalación, venga como lista (roles múltiples) o como uno solo / null. */
+function lista(inst: Fila, clave: string): Responsable[] {
+  const r = inst.responsables[clave];
+  if (!r) return [];
+  return Array.isArray(r) ? r : [r];
+}
 
 /** "2026-10-03" -> "03-10-2026" (sin pasar por Date: evita corrimientos de zona horaria). */
 function fechaCL(iso: string): string {
@@ -147,10 +157,10 @@ export default function ResponsablesAdmin() {
     for (const rol of datos.roles) {
       const cuenta = new Map<number, { nombre: string; n: number }>();
       for (const inst of datos.instalaciones) {
-        const r = inst.responsables[rol.clave];
-        if (!r) continue;
-        const previo = cuenta.get(r.colaborador_id);
-        cuenta.set(r.colaborador_id, { nombre: r.nombre ?? `#${r.colaborador_id}`, n: (previo?.n ?? 0) + 1 });
+        for (const r of lista(inst, rol.clave)) {
+          const previo = cuenta.get(r.colaborador_id);
+          cuenta.set(r.colaborador_id, { nombre: r.nombre ?? `#${r.colaborador_id}`, n: (previo?.n ?? 0) + 1 });
+        }
       }
       [...cuenta.entries()]
         .sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, 'es'))
@@ -168,9 +178,9 @@ export default function ResponsablesAdmin() {
       if (termino && !normalizar(`${inst.nombre} ${inst.cecos ?? ''}`).includes(termino)) return false;
       if (filtro === 'todas') return true;
       const [tipo, clave, id] = filtro.split(':');
-      const r = inst.responsables[clave];
-      if (tipo === 'sin') return r === null || r === undefined;
-      if (tipo === 'con') return !!r && String(r.colaborador_id) === id;
+      const rs = lista(inst, clave);
+      if (tipo === 'sin') return rs.length === 0;
+      if (tipo === 'con') return rs.some((r) => String(r.colaborador_id) === id);
       return true;
     });
   }, [datos, buscar, filtro]);
@@ -195,9 +205,9 @@ export default function ResponsablesAdmin() {
     });
   }
 
-  function abrir(tipo: Accion['tipo'], rol: Rol, ids: number[]) {
+  function abrir(tipo: Accion['tipo'], rol: Rol, ids: number[], colaborador?: Persona) {
     setAviso(null);
-    setAccion({ tipo, rol, ids });
+    setAccion({ tipo, rol, ids, colaborador });
   }
 
   const instalacionesDeAccion = useMemo(() => {
@@ -206,10 +216,10 @@ export default function ResponsablesAdmin() {
     return datos.instalaciones.filter((i) => ids.has(i.id));
   }, [accion, datos]);
 
-  /* Celda de un rol: responsable actual o "Sin asignar", con sus acciones (función, no componente: no se remonta). */
+  /* Celda de un rol: responsables actuales o "Sin asignar", con sus acciones (función, no componente: no se remonta). */
   function celdaRol(inst: Fila, rol: Rol) {
-    const r = inst.responsables[rol.clave];
-    if (!r) {
+    const rs = lista(inst, rol.clave);
+    if (rs.length === 0) {
       return (
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-muted-foreground">
@@ -221,6 +231,41 @@ export default function ResponsablesAdmin() {
         </div>
       );
     }
+
+    // Rol con varios responsables a la vez (supervisores de día y de noche): uno por línea, cada uno con su "Quitar".
+    if (rol.multiple) {
+      return (
+        <div className="flex flex-col gap-2">
+          {rs.map((r) => (
+            <div key={r.colaborador_id} className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{r.nombre ?? `Colaborador #${r.colaborador_id}`}</div>
+                <div className="text-xs text-muted-foreground">
+                  desde {fechaCL(r.asignado_desde)}
+                  {r.asignado_por ? ` · ${r.asignado_por}` : ''}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  abrir('liberar', rol, [inst.id], { id: r.colaborador_id, nombre: r.nombre ?? `#${r.colaborador_id}` })
+                }
+              >
+                Quitar
+              </Button>
+            </div>
+          ))}
+          <div>
+            <Button size="sm" variant="outline" onClick={() => abrir('asignar', rol, [inst.id])}>
+              <UserPlus className="mr-1 h-3.5 w-3.5" /> Agregar
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    const r = rs[0];
     return (
       <div className="flex flex-col gap-1">
         <div className="min-w-0">
@@ -248,7 +293,8 @@ export default function ResponsablesAdmin() {
         <div>
           <h2 className="text-lg font-semibold">Responsables de instalación</h2>
           <p className="text-sm text-muted-foreground">
-            Cada instalación tiene un responsable por rol. La efectividad de visitas se mide por supervisor.
+            Cada instalación tiene un administrador de contrato y puede tener varios supervisores (por ejemplo, uno de
+            día y otro de noche). La efectividad de visitas se mide por supervisor.
           </p>
         </div>
         {datos && (
@@ -317,7 +363,7 @@ export default function ResponsablesAdmin() {
           {roles.map((rol) => (
             <span key={rol.clave} className="flex gap-1">
               <Button size="sm" onClick={() => abrir('asignar', rol, [...seleccion])}>
-                <UserPlus className="mr-1 h-3.5 w-3.5" /> {rol.etiqueta}
+                <UserPlus className="mr-1 h-3.5 w-3.5" /> {rol.multiple ? `Agregar ${rol.etiqueta.toLowerCase()}` : rol.etiqueta}
               </Button>
               <Button size="sm" variant="outline" onClick={() => abrir('liberar', rol, [...seleccion])}>
                 <UserMinus className="mr-1 h-3.5 w-3.5" /> Quitar
@@ -436,6 +482,7 @@ export default function ResponsablesAdmin() {
       {accion?.tipo === 'liberar' && (
         <DialogLiberar
           rol={accion.rol}
+          colaborador={accion.colaborador}
           instalaciones={instalacionesDeAccion}
           onClose={() => setAccion(null)}
           onHecho={(msg) => {
@@ -508,15 +555,24 @@ function DialogAsignar({
     };
   }, [buscar, rol.clave]);
 
-  const reemplazos = elegido
-    ? instalaciones.filter((i) => {
-        const r = i.responsables[rol.clave];
-        return !!r && r.colaborador_id !== elegido.id;
-      }).length
-    : 0;
+  // En roles múltiples asignar AGREGA (no reemplaza a nadie); en los demás cambia al responsable actual.
+  const reemplazos =
+    elegido && !rol.multiple
+      ? instalaciones.filter((i) => {
+          const rs = lista(i, rol.clave);
+          return rs.length > 0 && rs.every((r) => r.colaborador_id !== elegido.id);
+        }).length
+      : 0;
   const yaLoTienen = elegido
-    ? instalaciones.filter((i) => i.responsables[rol.clave]?.colaborador_id === elegido.id).length
+    ? instalaciones.filter((i) => lista(i, rol.clave).some((r) => r.colaborador_id === elegido.id)).length
     : 0;
+  const conOtros =
+    elegido && rol.multiple
+      ? instalaciones.filter((i) => {
+          const rs = lista(i, rol.clave);
+          return rs.length > 0 && rs.every((r) => r.colaborador_id !== elegido.id);
+        }).length
+      : 0;
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -545,8 +601,14 @@ function DialogAsignar({
       <DialogContent style={{ maxWidth: 'min(46rem, calc(100% - 2rem))' }}>
         <form onSubmit={enviar} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Asignar {rol.etiqueta.toLowerCase()}</DialogTitle>
-            <DialogDescription>Una instalación tiene un solo {rol.etiqueta.toLowerCase()} a la vez.</DialogDescription>
+            <DialogTitle>
+              {rol.multiple ? 'Agregar' : 'Asignar'} {rol.etiqueta.toLowerCase()}
+            </DialogTitle>
+            <DialogDescription>
+              {rol.multiple
+                ? `Se suma a quienes ya estén asignados: no se quita a nadie. Una instalación puede tener varios (p. ej. día y noche).`
+                : `Una instalación tiene un solo ${rol.etiqueta.toLowerCase()} a la vez.`}
+            </DialogDescription>
           </DialogHeader>
 
           <ListaInstalaciones instalaciones={instalaciones} />
@@ -608,6 +670,11 @@ function DialogAsignar({
               fecha elegida.
             </p>
           )}
+          {elegido && conOtros > 0 && (
+            <p className="text-sm text-muted-foreground">
+              En {conOtros} instalación(es) ya hay otro {rol.etiqueta.toLowerCase()}: se agrega sin quitarlo.
+            </p>
+          )}
           {elegido && yaLoTienen > 0 && (
             <p className="text-sm text-muted-foreground">{yaLoTienen} instalación(es) ya lo tienen y no cambian.</p>
           )}
@@ -618,7 +685,7 @@ function DialogAsignar({
               Cancelar
             </Button>
             <Button type="submit" disabled={enviando || !elegido}>
-              {enviando ? 'Guardando…' : 'Asignar'}
+              {enviando ? 'Guardando…' : rol.multiple ? 'Agregar' : 'Asignar'}
             </Button>
           </DialogFooter>
         </form>
@@ -632,11 +699,13 @@ function DialogAsignar({
 function DialogLiberar({
   rol,
   instalaciones,
+  colaborador,
   onClose,
   onHecho,
 }: {
   rol: Rol;
   instalaciones: Fila[];
+  colaborador?: Persona;
   onClose: () => void;
   onHecho: (mensaje: string) => void;
 }) {
@@ -644,7 +713,29 @@ function DialogLiberar({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const conResponsable = instalaciones.filter((i) => !!i.responsables[rol.clave]).length;
+  // Personas asignadas en las instalaciones elegidas (para roles múltiples, donde hay que decir a quién se quita).
+  const personas = useMemo(() => {
+    const cuenta = new Map<number, { nombre: string; n: number }>();
+    for (const inst of instalaciones) {
+      for (const r of lista(inst, rol.clave)) {
+        const previo = cuenta.get(r.colaborador_id);
+        cuenta.set(r.colaborador_id, { nombre: r.nombre ?? `#${r.colaborador_id}`, n: (previo?.n ?? 0) + 1 });
+      }
+    }
+    return [...cuenta.entries()]
+      .map(([id, v]) => ({ id, nombre: v.nombre, n: v.n }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [instalaciones, rol.clave]);
+
+  const [elegidoId, setElegidoId] = useState<number | null>(colaborador?.id ?? (personas.length === 1 ? personas[0].id : null));
+
+  const multiple = rol.multiple === true;
+  const objetivo = multiple ? elegidoId : null;
+  const nombreObjetivo = colaborador?.nombre ?? personas.find((p) => p.id === elegidoId)?.nombre ?? null;
+
+  const conResponsable = instalaciones.filter((i) =>
+    lista(i, rol.clave).some((r) => objetivo === null || r.colaborador_id === objetivo),
+  ).length;
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -655,6 +746,7 @@ function DialogLiberar({
         rol: rol.clave,
         instalacion_ids: instalaciones.map((i) => i.id),
         asignado_hasta: hasta,
+        ...(objetivo !== null ? { colaborador_id: objetivo } : {}),
       });
       onHecho(res.data.message);
     } catch (err) {
@@ -668,13 +760,38 @@ function DialogLiberar({
       <DialogContent style={{ maxWidth: 'min(34rem, calc(100% - 2rem))' }}>
         <form onSubmit={enviar} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Quitar {rol.etiqueta.toLowerCase()}</DialogTitle>
+            <DialogTitle>
+              {multiple && nombreObjetivo ? `Quitar a ${nombreObjetivo}` : `Quitar ${rol.etiqueta.toLowerCase()}`}
+            </DialogTitle>
             <DialogDescription>
-              La instalación queda sin {rol.etiqueta.toLowerCase()} desde el día siguiente a la fecha de término.
+              {multiple
+                ? `Deja de ser ${rol.etiqueta.toLowerCase()} de estas instalaciones desde el día siguiente a la fecha de término. Los demás no cambian.`
+                : `La instalación queda sin ${rol.etiqueta.toLowerCase()} desde el día siguiente a la fecha de término.`}
             </DialogDescription>
           </DialogHeader>
 
           <ListaInstalaciones instalaciones={instalaciones} />
+
+          {multiple && !colaborador && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium" htmlFor="resp-quien">
+                ¿A quién quitar?
+              </label>
+              <select
+                id="resp-quien"
+                className={`${SELECT_CLASE} w-full`}
+                value={elegidoId ?? ''}
+                onChange={(e) => setElegidoId(e.target.value === '' ? null : Number(e.target.value))}
+              >
+                <option value="">Elige un {rol.etiqueta.toLowerCase()}…</option>
+                {personas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} ({p.n} inst.)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="resp-hasta">
@@ -684,9 +801,11 @@ function DialogLiberar({
           </div>
 
           <p className="text-sm text-muted-foreground">
-            {conResponsable === 0
-              ? 'Ninguna de las instalaciones elegidas tiene responsable: no hay nada que quitar.'
-              : `Se quitará en ${conResponsable} instalación(es).`}
+            {multiple && objetivo === null
+              ? `Elige a quién quitar.`
+              : conResponsable === 0
+                ? 'Ninguna de las instalaciones elegidas tiene responsable: no hay nada que quitar.'
+                : `Se quitará en ${conResponsable} instalación(es).`}
           </p>
           {error && <p className={TEXTO_ERROR}>{error}</p>}
 
@@ -694,7 +813,7 @@ function DialogLiberar({
             <Button type="button" variant="outline" onClick={onClose} disabled={enviando}>
               Cancelar
             </Button>
-            <Button type="submit" variant="destructive" disabled={enviando || conResponsable === 0}>
+            <Button type="submit" variant="destructive" disabled={enviando || conResponsable === 0 || (multiple && objetivo === null)}>
               {enviando ? 'Guardando…' : 'Quitar'}
             </Button>
           </DialogFooter>
