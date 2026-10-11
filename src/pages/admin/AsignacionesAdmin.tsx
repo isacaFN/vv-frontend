@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { History, Search, UserMinus, UserPlus } from 'lucide-react';
+import { History, Search, Truck, UserMinus, UserPlus } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DialogRegistrarMovil } from '@/pages/admin/DialogRegistrarMovil';
 import { SELECT_CLASE, fechaCL, fechaHora, hoyLocal, mensajeError } from '@/pages/admin/utils';
 import { cn } from '@/lib/utils';
 
@@ -49,9 +51,15 @@ type Pagina<T> = { data: T[]; current_page: number; last_page: number; total: nu
 
 type ParaLiberar = { movil: MovilFila; asignacion: Vigente };
 
+// Permiso para dar de alta móviles (distinto de asignaciones.gestionar, que da acceso a esta pestaña).
+const PERMISO_REGISTRAR_MOVIL = 'moviles.gestionar';
+
 /* ───────────────────────── Pestaña Asignaciones ───────────────────────── */
 
 export default function AsignacionesAdmin() {
+  const { tienePermiso } = useAuth();
+  const puedeRegistrarMovil = tienePermiso(PERMISO_REGISTRAR_MOVIL);
+
   const [moviles, setMoviles] = useState<MovilFila[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -63,6 +71,7 @@ export default function AsignacionesAdmin() {
 
   const [paraAsignar, setParaAsignar] = useState<MovilFila | null>(null);
   const [paraLiberar, setParaLiberar] = useState<ParaLiberar | null>(null);
+  const [registrando, setRegistrando] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
 
   useEffect(() => {
@@ -114,9 +123,22 @@ export default function AsignacionesAdmin() {
             registrado con quién lo hizo.
           </p>
         </div>
-        <Badge variant="outline">
-          {moviles.length} móviles · {sinAsignar} sin asignar
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">
+            {moviles.length} móviles · {sinAsignar} sin asignar
+          </Badge>
+          {puedeRegistrarMovil && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setAviso(null);
+                setRegistrando(true);
+              }}
+            >
+              <Truck className="size-4" /> Registrar móvil
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -183,6 +205,17 @@ export default function AsignacionesAdmin() {
 
       <DialogAsignar movil={paraAsignar} onCerrar={() => setParaAsignar(null)} onListo={alTerminar} />
       <DialogLiberar datos={paraLiberar} onCerrar={() => setParaLiberar(null)} onListo={alTerminar} />
+
+      {registrando && (
+        <DialogRegistrarMovil
+          placaInicial=""
+          onCerrar={() => setRegistrando(false)}
+          onRegistrado={(placa) => {
+            setRegistrando(false);
+            alTerminar(`Móvil ${placa} registrado. Ya puedes asignarle colaboradores.`);
+          }}
+        />
+      )}
     </div>
   );
 }

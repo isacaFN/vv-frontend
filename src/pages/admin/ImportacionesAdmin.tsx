@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { AlertTriangle, FileSpreadsheet, History, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, FileSpreadsheet, History, Loader2, Truck, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogRegistrarMovil } from '@/pages/admin/DialogRegistrarMovil';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SELECT_CLASE, fechaHora, mensajeError } from '@/pages/admin/utils';
 
@@ -41,10 +42,19 @@ type ImportFila = {
   ultima_completada: ResumenCarga | null;
 };
 
+// Placa que llegó en un Excel de Distancia recorrida y no existe como móvil.
+type PlacaSinRegistrar = {
+  placa: string;
+  filas: number; // filas descartadas por esa placa
+  ultima: string | null; // ISO UTC de la última vez que llegó
+};
+
 type Estado = {
   imports: ImportFila[];
   resumen: { atrasados: number; por_vencer: number; en_proceso: number };
   minutos_en_curso: number;
+  placas_sin_registrar?: PlacaSinRegistrar[];
+  puede_registrar_moviles?: boolean;
 };
 
 type CargaHistorial = ResumenCarga & { import: string; import_nombre: string };
@@ -122,6 +132,7 @@ export default function ImportacionesAdmin() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [elegido, setElegido] = useState<{ imp: ImportFila; archivo: File } | null>(null);
   const [descartesDe, setDescartesDe] = useState<{ id: number; titulo: string } | null>(null);
+  const [registrarMovil, setRegistrarMovil] = useState<{ placa: string } | null>(null);
   const [recarga, setRecarga] = useState(0); // sube cuando hay que refrescar el historial
 
   const selectorArchivo = useRef<HTMLInputElement | null>(null);
@@ -164,6 +175,8 @@ export default function ImportacionesAdmin() {
 
   const atrasados = estado?.imports.filter((i) => i.semaforo === 'atrasado') ?? [];
   const porVencer = estado?.imports.filter((i) => i.semaforo === 'por_vencer') ?? [];
+  const placasSinRegistrar = estado?.placas_sin_registrar ?? [];
+  const puedeRegistrarMoviles = estado?.puede_registrar_moviles ?? false;
 
   return (
     <div className="space-y-6">
@@ -202,6 +215,43 @@ export default function ImportacionesAdmin() {
         </div>
       )}
 
+      {placasSinRegistrar.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border p-3 text-sm" style={{ borderColor: '#d97706' }}>
+          <Truck className="mt-0.5 size-4 shrink-0" style={{ color: '#d97706' }} />
+          <div className="min-w-0 flex-1 space-y-2">
+            <p>
+              <span className="font-medium">
+                {placasSinRegistrar.length === 1
+                  ? 'Hay 1 placa de Distancia recorrida que no está registrada como móvil.'
+                  : `Hay ${placasSinRegistrar.length} placas de Distancia recorrida que no están registradas como móvil.`}
+              </span>{' '}
+              Sus filas no se cargaron.
+            </p>
+            <ul className="space-y-1">
+              {placasSinRegistrar.map((p) => (
+                <li key={p.placa} className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-medium">{p.placa}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {p.filas} {p.filas === 1 ? 'fila descartada' : 'filas descartadas'}
+                    {p.ultima ? ` · última vez ${fechaHora(p.ultima)}` : ''}
+                  </span>
+                  {puedeRegistrarMoviles && (
+                    <Button size="sm" variant="outline" onClick={() => setRegistrarMovil({ placa: p.placa })}>
+                      Registrar móvil
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              {puedeRegistrarMoviles
+                ? 'Si la placa es un vehículo real, regístrala y vuelve a subir el mismo Excel (las filas ya cargadas no se duplican). Si es un error de tipeo en el archivo, corrígelo y súbelo de nuevo.'
+                : 'Pide a un administrador con permiso de móviles que las registre; luego vuelve a subir el mismo Excel.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {aviso && <p className="text-sm text-muted-foreground">{aviso}</p>}
 
       {!estado ? (
@@ -213,7 +263,15 @@ export default function ImportacionesAdmin() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {estado.imports.map((imp) => (
-            <TarjetaImport key={imp.slug} imp={imp} onSubir={() => abrirSelector(imp)} onDescartes={setDescartesDe} />
+            <TarjetaImport
+              key={imp.slug}
+              imp={imp}
+              onSubir={() => abrirSelector(imp)}
+              onDescartes={setDescartesDe}
+              onRegistrarMovil={
+                imp.slug === 'distancias_recorridas' && puedeRegistrarMoviles ? () => setRegistrarMovil({ placa: '' }) : undefined
+              }
+            />
           ))}
         </div>
       )}
@@ -227,13 +285,32 @@ export default function ImportacionesAdmin() {
           onCerrar={() => setElegido(null)}
           onSubido={() => {
             setElegido(null);
-            setAviso(`«${elegido.imp.nombre}» recibido: se está procesando. El estado se actualiza solo.`);
+            setAviso(
+              `«${elegido.imp.nombre}» recibido: se está procesando. El estado se actualiza solo.` +
+                (elegido.imp.slug === 'distancias_recorridas'
+                  ? ' Si el archivo trae placas sin registrar, aparecerán en el aviso de arriba.'
+                  : ''),
+            );
             void cargar();
           }}
         />
       )}
 
       {descartesDe && <DialogDescartes carga={descartesDe} onCerrar={() => setDescartesDe(null)} />}
+
+      {registrarMovil && (
+        <DialogRegistrarMovil
+          placaInicial={registrarMovil.placa}
+          onCerrar={() => setRegistrarMovil(null)}
+          onRegistrado={(placa) => {
+            setRegistrarMovil(null);
+            setAviso(
+              `Móvil ${placa} registrado. Si había filas descartadas por esa placa, vuelve a subir el mismo Excel de Distancia recorrida para cargarlas (las ya cargadas no se duplican).`,
+            );
+            void cargar();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -244,10 +321,12 @@ function TarjetaImport({
   imp,
   onSubir,
   onDescartes,
+  onRegistrarMovil,
 }: {
   imp: ImportFila;
   onSubir: () => void;
   onDescartes: (c: { id: number; titulo: string }) => void;
+  onRegistrarMovil?: () => void;
 }) {
   const sem = SEMAFORO[imp.semaforo];
   const comp = imp.ultima_completada;
@@ -315,9 +394,16 @@ function TarjetaImport({
         </p>
       )}
 
-      <Button size="sm" variant="outline" disabled={imp.en_proceso} onClick={onSubir}>
-        <Upload className="size-4" /> Subir archivo
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={imp.en_proceso} onClick={onSubir}>
+          <Upload className="size-4" /> Subir archivo
+        </Button>
+        {onRegistrarMovil && (
+          <Button size="sm" variant="outline" onClick={onRegistrarMovil}>
+            <Truck className="size-4" /> Registrar móvil
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -427,6 +513,10 @@ function DialogSubir({
     </Dialog>
   );
 }
+
+/* ───────────────────────── Diálogo: registrar un móvil ───────────────────────── */
+
+
 
 /* ───────────────────────── Historial ───────────────────────── */
 
