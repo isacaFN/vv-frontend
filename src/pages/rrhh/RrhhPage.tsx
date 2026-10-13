@@ -1,14 +1,20 @@
 import { useState, type ComponentType } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { RRHH_PERMISOS } from '@/config/rrhh';
+import { RRHH_INSTALACIONES_PERMISOS } from '@/config/rrhh';
+import { VACACIONES_PERMISOS_VER } from '@/config/vacaciones';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstalacionesRrhh from '@/pages/rrhh/InstalacionesRrhh';
+import ContadorPendientes from '@/pages/rrhh/vacaciones/ContadorPendientes';
+import PermisosVacaciones from '@/pages/rrhh/vacaciones/PermisosVacaciones';
 
-// `permisos`: la pestaña se muestra si el usuario tiene AL MENOS uno.
-type Pestana = { value: string; label: string; permisos: string[]; Vista: ComponentType };
+// `permisos`: la pestaña se muestra si el usuario tiene AL MENOS uno. `Contador`: aviso opcional junto al título.
+type Pestana = { value: string; label: string; permisos: string[]; Vista: ComponentType; Contador?: ComponentType };
 
 // Para sumar una pestaña de RRHH: una entrada acá con su permiso.
-const PESTANAS: Pestana[] = [{ value: 'instalaciones', label: 'Instalaciones', permisos: RRHH_PERMISOS, Vista: InstalacionesRrhh }];
+const PESTANAS: Pestana[] = [
+  { value: 'instalaciones', label: 'Instalaciones', permisos: RRHH_INSTALACIONES_PERMISOS, Vista: InstalacionesRrhh },
+  { value: 'vacaciones', label: 'Permisos y Vacaciones', permisos: VACACIONES_PERMISOS_VER, Vista: PermisosVacaciones, Contador: ContadorPendientes },
+];
 
 const CLASE_TRIGGER =
   'rounded-md px-3 py-1.5 text-muted-foreground shadow-none data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm';
@@ -38,6 +44,7 @@ export default function RrhhPage() {
           {visibles.map((p) => (
             <TabsTrigger key={p.value} value={p.value} className={CLASE_TRIGGER}>
               {p.label}
+              {p.Contador && <p.Contador />}
             </TabsTrigger>
           ))}
         </TabsList>
