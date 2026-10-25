@@ -1,4 +1,5 @@
 import { useState, type ComponentType } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { RRHH_INSTALACIONES_PERMISOS } from '@/config/rrhh';
 import { VACACIONES_PERMISOS_VER } from '@/config/vacaciones';
@@ -22,7 +23,10 @@ const CLASE_TRIGGER =
 export default function RrhhPage() {
   const { tieneAlgunPermiso } = useAuth();
   const visibles = PESTANAS.filter((p) => tieneAlgunPermiso(p.permisos));
-  const [valor, setValor] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  // Un enlace de correo (/rrhh?solicitud=ID) abre directo la pestaña de Permisos y Vacaciones.
+  // Se decide una sola vez al entrar: la pantalla de vacaciones después limpia el parámetro de la URL.
+  const [valor, setValor] = useState<string | null>(() => (params.has('solicitud') ? 'vacaciones' : null));
 
   const activa = visibles.find((p) => p.value === valor) ?? visibles[0];
 

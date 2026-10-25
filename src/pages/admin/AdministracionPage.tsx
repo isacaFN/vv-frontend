@@ -4,6 +4,7 @@ import {
   PERMISOS_IMPORTACIONES,
   PERMISO_ADMIN_ASIGNACIONES,
   PERMISO_ADMIN_COMBUSTIBLE,
+  PERMISO_ADMIN_NOTIFICACIONES,
   PERMISO_ADMIN_RESPONSABLES,
   PERMISO_ADMIN_USUARIOS,
 } from '@/config/admin';
@@ -11,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AsignacionesAdmin from '@/pages/admin/AsignacionesAdmin';
 import CombustibleAdmin from '@/pages/admin/CombustibleAdmin';
 import ImportacionesAdmin from '@/pages/admin/ImportacionesAdmin';
+import NotificacionesAdmin from '@/pages/admin/NotificacionesAdmin';
 import ResponsablesAdmin from '@/pages/admin/ResponsablesAdmin';
 import UsuariosAdmin from '@/pages/admin/UsuariosAdmin';
 
@@ -25,6 +27,7 @@ const PESTANAS: Pestana[] = [
   { value: 'asignaciones', label: 'Asignación de móviles', permisos: [PERMISO_ADMIN_ASIGNACIONES], Vista: AsignacionesAdmin },
   { value: 'responsables', label: 'Responsables', permisos: [PERMISO_ADMIN_RESPONSABLES], Vista: ResponsablesAdmin },
   { value: 'usuarios', label: 'Usuarios', permisos: [PERMISO_ADMIN_USUARIOS], Vista: UsuariosAdmin },
+  { value: 'notificaciones', label: 'Notificaciones', permisos: [PERMISO_ADMIN_NOTIFICACIONES], Vista: NotificacionesAdmin },
 ];
 
 const CLASE_TRIGGER =
@@ -49,7 +52,7 @@ export default function AdministracionPage() {
       <div>
         <h1 className="font-heading text-2xl font-semibold">Administración</h1>
         <p className="text-sm text-muted-foreground">
-          Importaciones, combustible, asignación de móviles, responsables de instalación y usuarios.
+          Importaciones, combustible, asignación de móviles, responsables de instalación, usuarios y notificaciones por correo.
         </p>
       </div>
 

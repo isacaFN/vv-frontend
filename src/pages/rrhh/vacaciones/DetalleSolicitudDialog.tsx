@@ -146,6 +146,10 @@ export default function DetalleSolicitudDialog({ catalogo, id, inicial = null, o
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Los avisos por correo pueden incluir este comentario (al rechazar, siempre). El correo no es un canal seguro: escribe solo lo necesario y no
+                    pongas datos sensibles (salud, diagnósticos, datos personales).
+                  </p>
                 </div>
                 {pideFolio && (
                   <div className="space-y-1.5">

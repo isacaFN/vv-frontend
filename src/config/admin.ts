@@ -4,6 +4,7 @@ export const PERMISO_ADMIN_COMBUSTIBLE = 'combustibles.gestionar';
 export const PERMISO_ADMIN_ASIGNACIONES = 'asignaciones.gestionar';
 export const PERMISO_ADMIN_RESPONSABLES = 'responsables.gestionar';
 export const PERMISO_ADMIN_USUARIOS = 'usuarios.gestionar';
+export const PERMISO_ADMIN_NOTIFICACIONES = 'notificaciones.gestionar';
 
 // Solo se aceptan correos de este dominio (el backend lo valida igual: config/usuarios.php).
 export const DOMINIO_CORREO = 'vvsecurity.cl';
@@ -25,5 +26,6 @@ export const ADMIN_PERMISOS = [
   PERMISO_ADMIN_ASIGNACIONES,
   PERMISO_ADMIN_RESPONSABLES,
   PERMISO_ADMIN_USUARIOS,
+  PERMISO_ADMIN_NOTIFICACIONES,
   ...PERMISOS_IMPORTACIONES,
 ];

@@ -292,6 +292,10 @@ export default function NuevaSolicitudDialog({ catalogo, onClose, onCreada }: Pr
               value={comentario}
               onChange={(e) => setComentario(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Queda en el historial y puede viajar en los avisos por correo, que no son un canal seguro. No pongas datos sensibles (salud, diagnósticos,
+              datos personales).
+            </p>
           </div>
 
           {error && <p className={TEXTO_ERROR}>{error}</p>}

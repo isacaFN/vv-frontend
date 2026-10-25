@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import FondoLogin from '@/components/login/FondoLogin';
+import { PARAM_VOLVER, rutaInternaSegura } from '@/lib/volver';
 
 // El login es SIEMPRE oscuro, sin importar el tema del resto del sistema.
 const FONDO =
@@ -18,6 +19,9 @@ const CLASE_INPUT =
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Si venía de un enlace (p. ej. un correo de Permisos y Vacaciones), vuelve ahí; solo rutas internas.
+  const volver = rutaInternaSegura(params.get(PARAM_VOLVER));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [verPassword, setVerPassword] = useState(false);
@@ -30,7 +34,7 @@ export default function Login() {
     setCargando(true);
     try {
       await login(email, password);
-      navigate('/');
+      navigate(volver ?? '/');
     } catch (err) {
       // El servidor distingue "credenciales incorrectas" de "cuenta inhabilitada": se muestra su mensaje.
       const delServidor = isAxiosError(err) ? (err.response?.data?.errors?.email?.[0] as string | undefined) : undefined;

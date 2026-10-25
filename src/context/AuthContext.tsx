@@ -13,6 +13,8 @@ export type Usuario = {
 type AuthContextType = {
   usuario: Usuario | null;
   cargando: boolean;
+  /** true = la sesión se cerró a propósito (botón de salir): no hay que recordar a dónde volver. */
+  salidaVoluntaria: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Reemplaza los datos del usuario en sesión (p. ej. tras cambiar la contraseña). */
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [salidaVoluntaria, setSalidaVoluntaria] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -40,12 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(email: string, password: string) {
     const res = await api.post('/login', { email, password });
     localStorage.setItem('token', res.data.token);
+    setSalidaVoluntaria(false);
     setUsuario(res.data.user);
   }
 
   async function logout() {
     try { await api.post('/logout'); }
-    finally { localStorage.removeItem('token'); setUsuario(null); }
+    finally { localStorage.removeItem('token'); setSalidaVoluntaria(true); setUsuario(null); }
   }
 
   function tienePermiso(permiso: string) {
@@ -58,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ usuario, cargando, login, logout, actualizarUsuario: setUsuario, tienePermiso, tieneAlgunPermiso }}
+      value={{ usuario, cargando, salidaVoluntaria, login, logout, actualizarUsuario: setUsuario, tienePermiso, tieneAlgunPermiso }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Plus, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { isAxiosError } from 'axios';
+import { ChevronRight, Plus, Search, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { CLASE_ESTADO, ETIQUETA_ESTADO_CORTA, PERMISO_VAC_SOLICITAR } from '@/config/vacaciones';
@@ -42,6 +44,43 @@ export default function PermisosVacaciones() {
 
   const [nueva, setNueva] = useState(false);
   const [abierta, setAbierta] = useState<Abierta | null>(null);
+
+  // Enlace de un correo: /rrhh?solicitud=ID. Se comprueba el acceso ANTES de abrir, para dar un mensaje claro
+  // si la persona no puede ver esa solicitud (el servidor decide quién la ve; acá solo se muestra el resultado).
+  const [params, setParams] = useSearchParams();
+  const [avisoEnlace, setAvisoEnlace] = useState<string | null>(null);
+  const enlaceAtendido = useRef(false);
+
+  useEffect(() => {
+    const crudo = params.get('solicitud');
+    if (crudo === null) {
+      enlaceAtendido.current = false;
+      return;
+    }
+    if (enlaceAtendido.current) return;
+    enlaceAtendido.current = true;
+
+    // El parámetro se limpia de la URL para que recargar la página no vuelva a abrirla.
+    const resto = new URLSearchParams(params);
+    resto.delete('solicitud');
+    setParams(resto, { replace: true });
+
+    const id = /^\d{1,10}$/.test(crudo) ? Number(crudo) : 0;
+    if (id <= 0) {
+      setAvisoEnlace('El enlace de la solicitud no es válido. Búscala en la lista.');
+      return;
+    }
+    api
+      .get(`/vacaciones/solicitudes/${id}`)
+      .then(() => setAbierta({ id, inicial: null }))
+      .catch((e) => {
+        setAvisoEnlace(
+          isAxiosError(e) && e.response?.status === 404
+            ? 'No tienes acceso a esa solicitud o ya no existe. Si el correo te llegó por error, o crees que deberías verla, avísale a RRHH.'
+            : 'No se pudo abrir la solicitud del enlace. Inténtalo de nuevo o búscala en la lista.',
+        );
+      });
+  }, [params, setParams]);
 
   useEffect(() => {
     let vigente = true;
@@ -125,6 +164,15 @@ export default function PermisosVacaciones() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {avisoEnlace && (
+        <div role="status" className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+          <span className="flex-1">{avisoEnlace}</span>
+          <button type="button" aria-label="Cerrar aviso" className="rounded p-0.5 hover:bg-amber-500/20" onClick={() => setAvisoEnlace(null)}>
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {error && <p className={TEXTO_ERROR}>{error}</p>}
 
